@@ -1,0 +1,263 @@
+Here’s a **detailed PRD (Product Requirements Document)** for your WhatsApp AI Agent using **Gemini API + Supabase Vector DB**:
+
+---
+
+# **PRD: WhatsApp AI Customer Support Agent**
+
+## **1. Product Overview**
+
+An AI-powered WhatsApp chatbot that replaces customer support teams by:
+
+* Reading and understanding content from a Google Doc (FAQs, pricing, policies)
+* Answering customer queries on WhatsApp in real-time
+* Handling dynamic logic (hours, pricing, closure dates, bookings)
+* Easily updatable (just edit the Google Doc, no retraining)
+
+---
+
+## **2. Goals**
+
+* Reduce human customer support costs
+* Offer clients a **plug-and-play AI agent** (no tech expertise required)
+* Enable scalability and multi-client onboarding
+
+---
+
+## **3. Key Features**
+
+### **MVP Features**
+
+✅ WhatsApp Business API Integration
+✅ Google Docs Integration (auto-sync)
+✅ AI Response Engine (Gemini 1.5)
+✅ Vector Search using Supabase
+✅ Dynamic Logic for common scenarios:
+
+* Business hours
+* Pricing
+* Booking links (Calendly)
+  ✅ Session Handling (track conversation flow)
+  ✅ Admin Panel (Google Doc link setup, analytics) *(Optional for MVP)*
+
+### **Future Features**
+
+* Multi-language Support
+* Fallback to human support
+* Analytics Dashboard (FAQ hit rates, usage stats)
+* CRM Integration (HubSpot, Salesforce)
+
+---
+
+## **4. Tech Stack**
+
+* **Backend:** Node.js (Express) with typescript.
+* **Database:** Supabase (Vector DB + Postgres)
+* **AI:** Gemini API (Text + Embeddings)
+* **Frontend (Optional Dashboard):** React + Tailwind
+* **Hosting:** Vercel / Render / AWS Lightsail
+* **WhatsApp API:** Meta WhatsApp Cloud API
+* **Auth:** JWT / Firebase Auth
+
+---
+
+## **5. System Architecture**
+
+### **Flow**
+
+1. Customer sends message → WhatsApp Cloud API → Webhook to Backend
+2. Backend:
+
+   * Fetches company context from Google Doc (sync or cached)
+   * Generates embeddings for Google Doc chunks → stores in Supabase
+   * Converts user query to embedding → retrieves top chunks
+   * Sends context + user query → Gemini API for response
+   * Returns response via WhatsApp API
+3. Optional: Logs interaction in Supabase for analytics
+
+---
+
+## **6. Functional Requirements**
+
+### **6.1 WhatsApp Integration**
+
+* Handle text messages
+* Send responses instantly
+* Track user sessions (conversation context)
+
+### **6.2 Knowledge Base**
+
+* Connect Google Docs API or tell them to upload the google docs file. 
+* Extract and chunk content (e.g., 500 tokens per chunk)
+* Store embeddings in Supabase Vector DB
+* Auto-update when Google Doc changes
+
+### **6.3 AI Engine**
+
+* **Prompt Structure:**
+
+  ```
+  System: You are a helpful assistant for {company_name}. 
+  Use this context: {top_chunks}. 
+  If answer is unknown, politely say: "I'll connect you to a human."
+  ```
+* Use Gemini for responses
+* Use Gemini or OpenAI for embeddings
+
+### **6.4 Dynamic Logic**
+
+* Detect keywords like “price,” “hours,” “book”
+* If match:
+
+  * Fetch structured data from Google Doc (JSON block) or Supabase metadata
+* Use regex or NLP for date detection (closure days)
+
+---
+
+## **7. Non-Functional Requirements**
+
+* **Response Time:** <2s average
+* **Scalability:** Handle 1,000+ concurrent sessions
+* **Security:** Secure API keys, encrypt sensitive data
+* **Reliability:** 99.9% uptime
+
+---
+
+## **8. API Endpoints**
+
+* `POST /webhook/whatsapp` → Receives messages from WhatsApp
+* `POST /sync-doc` → Syncs Google Doc & updates embeddings
+* `GET /test-response` → Test AI responses
+* `POST /analytics` → Log conversation (optional)
+
+---
+
+## **9. Data Model**
+
+### **Supabase Tables**
+
+**docs**
+
+* id
+* company\_id
+* doc\_url
+* last\_synced
+
+**chunks**
+
+* id
+* doc\_id
+* text
+* embedding (vector)
+
+**messages**
+
+* id
+* user\_id
+* message\_text
+* response
+* timestamp
+
+
+Great question! **Tool calling** (a.k.a. function calling in LLMs) is very useful in this WhatsApp AI agent because it allows the AI model (Gemini) to **decide when to call your custom functions** for dynamic tasks.
+
+---
+
+### ✅ **What is Tool Calling in This Context?**
+
+Instead of hardcoding all logic in your backend, you define **functions (tools)** that the AI can call when certain actions are needed. For example:
+
+* **Check business hours** → Call `getBusinessHours()`
+* **Fetch pricing** → Call `getPricing()`
+* **Create a booking** → Call `bookAppointment()`
+* **Retrieve FAQ from Supabase** → Call `getContextFromVectorDB()`
+
+Gemini (or GPT) will see the tools in its prompt and decide:
+
+> "Oh, the user asked for pricing → I should call `getPricing()` with arguments `{ product: 'X' }`."
+
+---
+
+### ✅ **How It Fits in Our System**
+
+1. **User Message on WhatsApp:**
+   “What are your prices for wedding photography?”
+
+2. **Your Backend:**
+
+   * Sends the message to Gemini with **function definitions** in the prompt.
+   * Gemini responds:
+
+     ```json
+     {
+       "name": "getPricing",
+       "arguments": { "service": "wedding photography" }
+     }
+     ```
+
+3. **Your Code Executes the Tool:**
+
+   * Runs `getPricing()` → pulls price from Google Doc/Supabase.
+   * Returns result to Gemini:
+
+     ```json
+     { "price": "$1,200 for full package" }
+     ```
+
+4. **Gemini Crafts the Final Reply:**
+   “Our wedding photography package is \$1,200.”
+
+---
+
+### ✅ **Benefits of Tool Calling**
+
+* Keeps **business logic separate from AI text generation**.
+* Avoids prompt hacking for sensitive operations.
+* Makes it easy to **add features without retraining** (just define a new tool).
+
+---
+
+### ✅ **Where to Implement Tools in Our Stack**
+
+* **ai.service.ts** → Handles Gemini API calls and defines available tools.
+
+* Tools are simple **async functions**:
+
+  ```ts
+  export const tools = [
+    {
+      name: "getPricing",
+      description: "Fetch pricing for a specific service",
+      parameters: {
+        type: "object",
+        properties: {
+          service: { type: "string" }
+        },
+        required: ["service"]
+      }
+    }
+  ];
+  ```
+
+* Gemini is called with:
+
+  ```ts
+  await geminiClient.generateContent({
+    model: "gemini-pro",
+    tools, // Pass tool definitions
+    input: userMessage
+  });
+  ```
+
+* When Gemini outputs `tool_call`, execute the function, return the result, then **send a follow-up request** so Gemini finalizes the user response.
+
+---
+
+🔥 **This approach is PERFECT** for handling:
+
+* Pricing logic
+* Business hours
+* Bookings
+* Pulling structured data from Google Doc or Supabase
+
+
+git init
